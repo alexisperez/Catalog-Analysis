@@ -1,454 +1,352 @@
-# -*- coding: utf-8 -*-
-# <nbformat>3.0</nbformat>
-
-# <markdowncell>
-
-# <center><h1><FONT FACE="Vollkorn"><Font Color=navy> Analysis of Suppliers Catalogs</h1> 
-# <center><h2> <OL Type = ' '>
-# Gaining visibility of supplier pricing and determining potential impact on the 
-# <Center>University of California, Berkeley and San Francisco
-# <p>
-# <center><img src="http://calwatchdog.com/wp-content/uploads/2013/09/University_of_California_seal.png" >
-
-# <markdowncell>
-
-# <Font FACE= Times><Font Size= 4> <b>Introduction<p> </b>
-# <p>
-#        The University of California, Berkeley and San Francisco have strategic relationships with core suppliers through which its students, faculty, and staff do routine business. The daily operations of UCSF and UC Berkeley are fueled by the constant procurement of goods and services off of an e-commerce system called BearBuy. It is through this system that suppliers are enabled to host product catalogs. The Procurement department is responsible for determining the impact of the suggested pricing. Through an analysis of the proposed catalogs, the University gains visibility into any future price increases or product removals and determines if the proposed catalog is acceptable to be purchased off of.
-#            <p>
-# <t>
-# <b> The Analysis:</b>
-# <p>  <t>    The several hosted catalogs all offer an abundant amount of products, ranging from a few thousand to over a million line items. In order to understand relevant product changes, the previous 12 months worth of campus spend through that supplier is matched up against both the current and proposed catalog. This narrows down the entirety of the catalog to the relevant products of which the campus purchases. From the past 12 month spend, the analysis determines whether or not there are price increases through the proposed catalog and if the supplier is following the terms of their contract. 
-#     
-# <p><p>Currently, the analysis does not take into account products of which the university has never purchased. The simple assumption that past historical spend accurately reflects forecasted purchases allows for an opportunity in an improvement in the analysis.
-#         
-# <b>Benefits of Using Python/PANDAS:</b>
-# <p>
-# The routine review of proposed catalogs, the limits of Excel and time consumption of repeated manual analysis make an automated process that can  analyze and tackle the large amount data extremeley valuable. Python, and more specifically, PANDAS, is an excellent tool to run this continued analysis of determining potential price increases from the suppliers.
-# <p>
-#     PANDAS allows for the easy manipulation of dataframes and the content within. The analyst inputs the correct file location of the catalogs to be analyzed as well as notes the specific campus and supplier. The code uses this data to ouptput all of the necessary content for determining if a price file is appropriate into a running log. This not only yields instant visibility into the impact of a catalog, but continuously organizes the results chronologically for easy recall.
-
-# <codecell>
-
-##Import modules that have certain functions necessary to complete the analysis
-import pandas as pd
-from pandas import DataFrame as df
-from pandas import Series
-from pandas import merge
-import numpy as np
-import csv
-
-# <markdowncell>
-
-# <Font Face='Times'><Font Size='4'><b>The following two cells take in direct imput necessary to analyze the specific supplier with respect to the applicable campus
-
-# <codecell>
-
-#These are your variables that are unique to your file settings
-
-Current = pd.read_table('C:/Users/alexisperez/Documents/Stanley Stockroom/UC Berkeley/2014/6-2014/Current.txt',error_bad_lines = False)
-Proposed = pd.read_table('C:/Users/alexisperez/Documents/Stanley Stockroom/UC Berkeley/2014/6-2014/Proposed.txt',error_bad_lines = False)
-Spend= pd.read_csv('C:/Users/alexisperez/Documents/Stanley Stockroom/UC Berkeley/2014/6-2014/PO.csv')
-
-Campus= 'UCB'
-Supplier = 'Stanley Stockroom'
-
-# <markdowncell>
-
-# <center><FONT FACE='Vollkorn'><Font Size=5><b>The following code will run the analysis and input in the results to a running log. </b>
-#     <p> <center><FONT Size= 4>Part A cleans and prepares the data and Part B performs the calculations and analysis.
-#         <p>
-#    <b> A_I. </b>
-#     <blockquote>In order to compare products and respective pricing properly, we need to look at the specific product Part Number along with its Unit of Measure. This is to ensure that if the same product, ABC, is listed as a single unit and a case of units, the prices of the different units are not compared to give false results.</p>
-
-# <codecell>
-
-#Suppliers specifiy Units of Measure differently:
-#   Possible to see a variety of formats: 1/PK, Pack, PK, package 
-#Using the last two UOM won't work if you have package instead of 1/PK 
-
-#The wording suppliers choose is different for each one, so it is necessary to make the Units of Measure standard
-#Change full words into abreviations to now actually pair up package with PK and box/BX, case with CS
-
-Spend=Spend.rename(columns={'Amount/UOM & UOM':'Packaging UOM','SKU/Catalog #':'Part Number'})
-
-def edit_UOM(df):
-  df['Packaging UOM']=df['Packaging UOM'].str.replace('.*box.*','BX').str.replace('.*package.*','PK').str.replace('.*case.*','CS').str.replace('.*each.*','EA')
-
-edit_UOM(Spend)
-edit_UOM(Current)
-edit_UOM(Proposed)
-
-# <codecell>
-
-#In Amount/UOM & UOM the unit of measure might be listed as 1/EA. This won't match up if in the Price catalog it is listed as EA
-#Change each UOM column to only the LAST two characters to ensure similarities in format:
-
-def last_two(df):
-    df['Packaging UOM'] = df['Packaging UOM'].astype('str').str[-2:] 
-
-last_two(Spend)
-last_two(Current)
-last_two(Proposed)
-
-# Create a new Column called PartUOM so we can compare appropriately between all three files
-
-def combine_cols(df):
-    df['PartUOM']=df.apply(lambda x:'%s,%s' % (x['Part Number'],x['Packaging UOM']),axis=1)
-
-    
-combine_cols(Spend)
-combine_cols(Current)
-combine_cols(Proposed)
-
-# Before merging, we need to make sure that all extraneous symbols are omitted 
-# A user input might include or exclude any symbols that is included in the Suppliers catalog
-
-def clean_up(df):
-    df['PartUOM']= df['PartUOM'].str.replace("-", "").str.replace(",","").str.replace("/","").str.replace("_","").str.replace(".","").str.replace("'","")
-
-
-clean_up(Spend)
-clean_up(Current)
-clean_up(Proposed)
-
-# <headingcell level=4>
-
-# <FONT FACE ='Vollkorn'><Font Size= 4><b>A_II.</b>
-# 
-#     <DD><blockquote>Merge the suppliers current and proposed catalogs together and extract only the necessary data needed.
-
-# <codecell>
-
-# Merge the Proposed Catalog with the Current Catalog
-# Create a new dataframe with the specific columns necessary for the analysis
-
-comparison = merge(Current, Proposed, left_on='PartUOM', right_on='PartUOM', how='inner', suffixes=('_x', '_y')) 
-
-comparison = comparison.loc[:,['PartUOM', 'Price_x' , 'Price_y']]
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font Size=4>A_III. 
-# <blockquote>Edit the Spend data
-# <p>We are at the mercy of the people who enter the spend data. The analysis wants to only consider products that are actually offered in the catalog and clearly labeled. 
-#   
-#     <p>
-#     Possible hurdles in spend data:
-# <p>
-#     <OL>
-#     <LI>Blank Part Numbers which won't result in a match to a product in the catalog and will yield a lower validity of the anaylsis
-# <p>
-#    <LI>Instead of completely blank Part Number, someone may input 'N/A' or 'See Quote'
-
-# <codecell>
-
-#In order to properly analyze the data, we only want SKUs where they are not blank. Otherwise there is no way to tell if they should have been in a catalog
-#This line of code omits all SKUS that are blank
-Spend = Spend[Spend['Part Number'] >0]
-Spend = Spend[Spend['Part Number'].notnull()]
-
-#Want to get rid of SKUs where the person entered N/A. However, we don't use .str.contains because N/A COULD be a part of the SKU/Part #
-List = ['N.A.','N/A','NA','n/a','n.a.','na']
-Spend = Spend[-Spend['Part Number'].str.contains('Quote')]
-Spend = Spend[-Spend['Part Number'].str.contains('quote')]
-Spend = Spend[-Spend['Part Number'].str.contains('see attach')]
-
-
-#Using .isin will filter out those SKUs where it exactly equals N/A isntead of just contains it. 
-Spend = Spend[-Spend['Part Number'].isin(List)]
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font Size =4>A_IV.
-#     <blockquote> Merge the catalog dataframe with the 12-month historic spend for that supplier
-
-# <codecell>
-
-#Merge the two catalog comparisons with the historic spend based on PartUOM
-#Merging on 'Left' means we want all values of the Spend and only the values of the comparison that match.
-
-analysis = merge(Spend, comparison, left_on='PartUOM', right_on='PartUOM', how='left') 
-
-#Extract only the columns that are relevant to the analysis
-
-analysis = analysis.loc[:,[ 'Part Number','PartUOM', 'UNSPSC','Manufacturer', 'Quantity', 'Unit Price', 'Extended Price', 'Price_x' , 'Price_y','Item Type']]
-
-#rename Price_x to Current Price and Price_y to Proposed Price for easier analysis
-
-analysis = analysis.rename(columns={'Price_x': 'Current Price', 'Price_y': 'Proposed Price'})
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font Size =4>A_V. 
-#     <blockquote>May or may not want to take out products that aren't in the catalog. First, run the analysis including 'NonCatalog Products', however, if the validity percent is low, then take out these products. This helps to understand if the supplier is providing more custom made products than standard hosted products. 
-
-# <codecell>
-
-##If you only want items that are SQ Hosted Product
-##Hashtag this first
-#analysis= analysis[analysis['Item Type'] != 'NonCatalog Product']
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font Size =4>A_VI.
-#     <blockquote>Determine if any products were removed and then convert strings to floats to perform computations 
-
-# <codecell>
-
-##If there are any prices removed in the catalogs, the vendors will either put 'Price Removed' in the Proposed catalog under Current or Proposed Prices
-
-#For the rest of the analysis we don't want 'Price Removed' since this is a string and we can't do operations on the entire column
-# We do want to know how many items were removed
-##  We can compute that now, and then later change the 'Price Removed' to 0 so we can do calculations
-#Here we sum the number of times Price Removed shows up in either of two columns to get the number of deleted items
-
-analysis['Proposed Price']=analysis['Proposed Price'].astype('str')
-analysis['Current Price'] = analysis['Current Price'].astype('str')
-removed = analysis['Proposed Price'].str.contains('Price Removed').sum()
-removed2 = analysis['Current Price'].str.contains('Price Removed').sum()
-
-#I put two variables because the vendor could have the Price removed in Current or Proposed Price
-print "The number of deleted items is %s and %s" %(removed,removed2)
-
-# <codecell>
-
-#Some Price files may include $ and , in the prices so this will result in the number not being a float
-#We use the if analysis...dtype to specify that if the Series is an Object, then we need to remove the $ and , and convert to float.
-#Before I didn't specify this and the code omitted all data if I put .str.replace('$') when there was actually no $; Now the new code makes it applicable to any data
-# Need to first omit the symbols 
-#Then convert to float through .astype
-
-if analysis['Extended Price'].dtype is np.dtype('O'):
- analysis['Extended Price'] = analysis['Extended Price'].str.replace(",","").str.replace("$","")
- analysis['Extended Price']= analysis['Extended Price'].astype('float32')
-
-#In the Current and/or Proposed Catalog, some prices may be labeled as Price Removed  
-#Get rid of the Price Removed because these are strings and we want the entire column to consist of floats
-#Replace the Price Removed with 0
-
-if analysis['Current Price'].dtype is np.dtype('O'):
- analysis['Current Price']= analysis['Current Price'].replace(to_replace= 'Price Removed' , value= 0, inplace=False)
- analysis['Current Price'] = analysis['Current Price'].str.replace(",","").str.replace("$","")
- analysis['Current Price'] = analysis['Current Price'].astype('float32')
-
-if analysis['Proposed Price'].dtype is np.dtype('O'):
- analysis['Proposed Price']= analysis['Proposed Price'].replace(to_replace= 'Price Removed' , value= 0, inplace=False)
- analysis['Proposed Price'] = analysis['Proposed Price'].str.replace("$", "").str.replace(",","")
- analysis['Proposed Price'] = analysis['Proposed Price'].astype('float32')   
-
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font Size =4>B_I.  
-#     <blockquote>Determine how historic spend impacts the Proposed pricing 
-
-# <codecell>
-
-#Append computed values at the end of the DataFrame that helps us in the final analysis 
-#Compute Ext. Current Price, Proposed Ext. Price, $ Difference and % Difference
-
-analysis['Current Ext. Price']=analysis['Quantity']*analysis['Current Price'].astype('float32')
-analysis['Proposed Ext. Price'] = analysis['Quantity']*analysis['Proposed Price'].astype('float32')
-
-
-analysis['$ Difference'] = analysis['Proposed Ext. Price']-analysis['Current Ext. Price']
-analysis['% Difference'] = analysis['$ Difference']/analysis['Current Ext. Price']
-
-
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font Size =4>B_II. 
-#     <blockquote>Create a 'Validity' column that determines if there is a product in the spend but not either catalog
-
-# <codecell>
-
-# Let's add a validity column
-# Validity answers the question, how much the comparable spend purchased is reflected in the current and proposed catalogs
-# Recall, we already took out part numbers that were null or mislabeled by the user. 
-# We don't want this data since it won't accurately reflect an actual product.
-# A SKU that is blank or mislabeled shouldn't be included in the analysis
-
-analysis['Valid'] = analysis['Current Price'].notnull() * analysis['Proposed Price'].notnull()
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font Size =4>B_III. 
-#     <blockquote>Calculate Valid Spend and Valid Current and Proposed Extended Prices
-
-# <codecell>
-
-## Now we can multiply the Extended prices by the Validity column to get the valid spend, valid current and proposed ext. prices
-
-analysis['Valid Spend'] = analysis['Extended Price'] * analysis['Valid']
-analysis['Valid Current Ext. Price'] = analysis['Current Ext. Price'] * analysis['Valid']
-analysis['Valid Proposed Ext. Price'] = analysis['Proposed Ext. Price'] * analysis['Valid']
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font Size =4
-#                             >B_IV.
-#     <blockquote>
-#         Calculate the variables necessary for understanding the impact on the campus
-
-# <codecell>
-
-#This locale allows us to convert floats into currency
-import locale
-locale.setlocale( locale.LC_ALL, '' )
-
-
-##Sum up the column values to get a total price 
-Spend = analysis['Extended Price'].sum()
-Valid_Spend = analysis['Valid Spend'].sum()
-
-
-
-# We can get the Validity percentage
-Validity_percentage = Valid_Spend / Spend
-valid_percentage = '{percent:.2%}'.format(percent= Validity_percentage)
-
-#Sum up Current and Proposed Extended Prices
-Valid_CurrExt_Price = analysis['Valid Current Ext. Price'].sum()
-Valid_ProposedExt_Price = analysis['Valid Proposed Ext. Price'].sum()
-
-Total_Catalog_Price_Difference = Valid_ProposedExt_Price - Valid_CurrExt_Price
-Percent_Increase = Total_Catalog_Price_Difference/Valid_CurrExt_Price
-
-
-#Understand the count of different SKU's purchased
-Count_SKUS = len(analysis['Part Number'].unique())
-
-#Get an understanding for the total number of products purchased
-Sum_of_SKUS= analysis['Quantity'].sum()
-
-
-
-#set these variables equal to currency so the end result is easier to read
-
-spenddollars = locale.currency(Spend)
-valid_spend_dollars = locale.currency(Valid_Spend)
-current_price_dollars = locale.currency (Valid_CurrExt_Price)
-proposed_price_dollars = locale.currency(Valid_ProposedExt_Price)
-price_difference_dollars = locale.currency(Total_Catalog_Price_Difference)
-
-#Now we want the percentage to actually look like a percentage
-#Ex. .0007 will simply yield 0 if we don't format it properly
-
-percentage = '{percent:.2%}'.format(percent=Percent_Increase)
-
-
-#Notice how the variables used are %s not %d. The locale.currency function changes the float into a string.
-
-print "The Total spend is %s and the valid spend is %s" %(spenddollars,valid_spend_dollars)
-print "Validity percentage is %s \n" %valid_percentage
-print "The Total Quantity of SKUS analyzed is %d" %Sum_of_SKUS
-print "The number of SKUS analyzed is %d\n" %Count_SKUS
-print "The Total Valid Current Extended price is %s" %current_price_dollars
-print "The Total Valid Proposed Extended price is %s\n\n" %proposed_price_dollars
-print "The dollar difference between Total Proposed and Total Current is %s" %price_difference_dollars
-print "The percent increase is %s" %percentage
-
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font Size =4>B_V.
-#     <blockquote>
-#         Calculate the impact in dollars of the removed products from the proposed catalog 
-#         <p>
-#             <p>
-#         The reason for this calculation is to understand if a supplier is discontinuing a product that the university had purchased regularly. Small removed spend is acceptable, but a large amount of spend removed requires questioning and further investigation.
-
-# <codecell>
-
-#Let's now get the spend for any products that were removed
-#We can create a separate dataframe where the ProposedPrice is 0 AND there exists a Current Price
-
-#First we need to fill the Proposed Prices to 0 if it is empty
-analysis['Proposed Price'] = analysis['Proposed Price'].fillna(0)
-
-#After filling in the empty spaces with 0 we create a dataframe where the Proposed Price is ONLY zero
-proposed_0=  analysis[analysis['Proposed Price'] == 0]
-
-#We don't want both Current and Proposed to be zero
-#If there exists a current price and not a proposed then it shows that a price was removed
-#Create a dataframe where Proposed Price is 0 and Current price is some number 
-
-currentnot_zero = proposed_0[proposed_0['Current Price'] >0]
-
-#This variable will show the aggregated historic spend on the products that were removed
-Removed_Spend = currentnot_zero['Extended Price'].sum()
-
-#Let's put this value in currency notation
-Removed_Spend_Dollars = locale.currency(Removed_Spend)
-
-print "The Removed Spend is %s" %Removed_Spend_Dollars
-
-# <codecell>
-
-analysis[:4]
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font Size =4>B_VI. 
-#     <blockquote>Gain visibility into the top 5 UNSPSC's by spend and the impact of the catalog on these product types
-
-# <codecell>
-
-#Create a pivot table to look at top UNSPSC's and specific numbers associated with those product categories
-
-from pandas import pivot_table
-import numpy as np
-  
-UNSPSC = pivot_table( analysis, values = ['Extended Price', 'Quantity', '$ Difference','Valid Current Ext. Price','Valid Proposed Ext. Price'], rows = ['UNSPSC'], aggfunc = np.sum)
-
-UNSPSC['Percent Increase'] = UNSPSC['$ Difference'] / UNSPSC['Valid Current Ext. Price']
-UNSPSC['Percent Increase']= UNSPSC['Percent Increase']*100
-
-# <codecell>
-
-#Want to show the pivot table with the top UNSPSC's by spend
-#Use .head() because some pivot tables will be too large to show all of the columns and we only care about the top 5 anyway
-UNSPSC=UNSPSC.rename(columns={'Extended Price':'Spend'})
-UNSPSC.sort("Spend", ascending=False).head()
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font Size=4>B_VII. 
-#     <blockquote>
-#         Gain visibility into the top 5 Manufacturers by spend and the impact of the proposed catalog
-
-# <codecell>
-
-#Create a pivot table to look at the summary of the proposed catalog impact by Manufacturer
-
-Manufacturer = pivot_table( analysis, values = ['Extended Price', 'Quantity', '$ Difference','Valid Current Ext. Price','Valid Proposed Ext. Price'], rows = 'Manufacturer', aggfunc = np.sum)
-
-
-Manufacturer['Percent Increase'] = Manufacturer['$ Difference'] / Manufacturer['Valid Current Ext. Price']
-Manufacturer['Percent Increase']= Manufacturer['Percent Increase']*100
-Manufacturer= Manufacturer[Manufacturer['$ Difference'].notnull()]
-
-Manufacturer=Manufacturer.rename(columns={'Extended Price':'Spend'})
-Manufacturer.sort("Spend", ascending=False)[:6]
-
-# <headingcell level=4>
-
-# <Font Face='Vollkorn'><Font SIZE=4>B_VIII. 
-#     <blockquote>Log the results in a running file for easy recall of historic catalog changes by supplier and campus
-
-# <codecell>
-
-import datetime as dt
-date = dt.date.today().strftime("%m/%d/%Y")
-
-# <codecell>
-
-Summary= df([dict(Supplier=Supplier,Spend=spenddollars,Validity_Percent=valid_percentage,Price_Difference=price_difference_dollars,Percentage_of_Increase=percentage,Quantity_Removed=removed,Quantity_Removed2=removed2,Removed_Spend = Removed_Spend_Dollars, Campus = Campus, Date = date),])
-
-# <codecell>
-
-Log = pd.read_csv('C:/Users/alexisperez/Documents/Log of Price Files/Price File Log.csv')
-Log = Log.append(Summary)
-Log.to_csv('C:/Users/alexisperez/Documents/Log of Price Files/Price File Log.csv', index = False)
+{
+ "metadata": {
+  "name": "Catalog Analysis General"
+ },
+ "nbformat": 3,
+ "nbformat_minor": 0,
+ "worksheets": [
+  {
+   "cells": [
+    {
+     "cell_type": "markdown",
+     "metadata": {},
+     "source": "<center><h1><FONT FACE=\"Vollkorn\"><Font Color=navy> Analysis of Suppliers Catalogs</h1> \n<center><h2> <OL Type = ' '>\nGaining visibility of supplier pricing and determining potential impact on the \n<Center>University of California, Berkeley and San Francisco\n<p>\n<center><img src=\"http://calwatchdog.com/wp-content/uploads/2013/09/University_of_California_seal.png\" >"
+    },
+    {
+     "cell_type": "markdown",
+     "metadata": {},
+     "source": "<Font FACE= Times><Font Size= 4> <b>Introduction<p> </b>\n<p>\n       The University of California, Berkeley and San Francisco have strategic relationships with core suppliers through which its students, faculty, and staff do routine business. The daily operations of UCSF and UC Berkeley are fueled by the constant procurement of goods and services off of an e-commerce system called BearBuy. It is through this system that suppliers are enabled to host product catalogs. The Procurement department is responsible for determining the impact of the suggested pricing. Through an analysis of the proposed catalogs, the University gains visibility into any future price increases or product removals and determines if the proposed catalog is acceptable to be purchased off of.\n           <p>\n<t>\n<b> The Analysis:</b>\n<p>  <t>    The several hosted catalogs all offer an abundant amount of products, ranging from a few thousand to over a million line items. In order to understand relevant product changes, the previous 12 months worth of campus spend through that supplier is matched up against both the current and proposed catalog. This narrows down the entirety of the catalog to the relevant products of which the campus purchases. From the past 12 month spend, the analysis determines whether or not there are price increases through the proposed catalog and if the supplier is following the terms of their contract. \n    \n<p><p>Currently, the analysis does not take into account products of which the university has never purchased. The simple assumption that past historical spend accurately reflects forecasted purchases allows for an opportunity in an improvement in the analysis.\n        \n<b>Benefits of Using Python/PANDAS:</b>\n<p>\nThe routine review of proposed catalogs, the limits of Excel and time consumption of repeated manual analysis make an automated process that can  analyze and tackle the large amount data extremeley valuable. Python, and more specifically, PANDAS, is an excellent tool to run this continued analysis of determining potential price increases from the suppliers.\n<p>\n    PANDAS allows for the easy manipulation of dataframes and the content within. The analyst inputs the correct file location of the catalogs to be analyzed as well as notes the specific campus and supplier. The code uses this data to ouptput all of the necessary content for determining if a price file is appropriate into a running log. This not only yields instant visibility into the impact of a catalog, but continuously organizes the results chronologically for easy recall."
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "##Import modules that have certain functions necessary to complete the analysis\nimport pandas as pd\nfrom pandas import DataFrame as df\nfrom pandas import Series\nfrom pandas import merge\nimport numpy as np\nimport csv",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 23
+    },
+    {
+     "cell_type": "markdown",
+     "metadata": {},
+     "source": "<Font Face='Times'><Font Size='4'><b>The following two cells take in direct imput necessary to analyze the specific supplier with respect to the applicable campus"
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#These are your variables that are unique to your file settings\n\nCurrent = pd.read_table('C:/Users/alexisperez/Documents/Stanley Stockroom/UC Berkeley/2014/6-2014/Current.txt',error_bad_lines = False)\nProposed = pd.read_table('C:/Users/alexisperez/Documents/Stanley Stockroom/UC Berkeley/2014/6-2014/Proposed.txt',error_bad_lines = False)\nSpend= pd.read_csv('C:/Users/alexisperez/Documents/Stanley Stockroom/UC Berkeley/2014/6-2014/PO.csv')\n\nCampus= 'UCB'\nSupplier = 'Stanley Stockroom'\n",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 24
+    },
+    {
+     "cell_type": "markdown",
+     "metadata": {},
+     "source": "<center><FONT FACE='Vollkorn'><Font Size=5><b>The following code will run the analysis and input in the results to a running log. </b>\n    <p> <center><FONT Size= 4>Part A cleans and prepares the data and Part B performs the calculations and analysis.\n        <p>\n   <b> A_I. </b>\n    <blockquote>In order to compare products and respective pricing properly, we need to look at the specific product Part Number along with its Unit of Measure. This is to ensure that if the same product, ABC, is listed as a single unit and a case of units, the prices of the different units are not compared to give false results.</p>"
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#Suppliers specifiy Units of Measure differently:\n#   Possible to see a variety of formats: 1/PK, Pack, PK, package \n#Using the last two UOM won't work if you have package instead of 1/PK \n\n#The wording suppliers choose is different for each one, so it is necessary to make the Units of Measure standard\n#Change full words into abreviations to now actually pair up package with PK and box/BX, case with CS\n\nSpend=Spend.rename(columns={'Amount/UOM & UOM':'Packaging UOM','SKU/Catalog #':'Part Number'})\n\ndef edit_UOM(df):\n  df['Packaging UOM']=df['Packaging UOM'].str.replace('.*box.*','BX').str.replace('.*package.*','PK').str.replace('.*case.*','CS').str.replace('.*each.*','EA')\n\nedit_UOM(Spend)\nedit_UOM(Current)\nedit_UOM(Proposed)",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 25
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#In Amount/UOM & UOM the unit of measure might be listed as 1/EA. This won't match up if in the Price catalog it is listed as EA\n#Change each UOM column to only the LAST two characters to ensure similarities in format:\n\ndef last_two(df):\n    df['Packaging UOM'] = df['Packaging UOM'].astype('str').str[-2:] \n\nlast_two(Spend)\nlast_two(Current)\nlast_two(Proposed)\n\n# Create a new Column called PartUOM so we can compare appropriately between all three files\n\ndef combine_cols(df):\n    df['PartUOM']=df.apply(lambda x:'%s,%s' % (x['Part Number'],x['Packaging UOM']),axis=1)\n\n    \ncombine_cols(Spend)\ncombine_cols(Current)\ncombine_cols(Proposed)\n\n# Before merging, we need to make sure that all extraneous symbols are omitted \n# A user input might include or exclude any symbols that is included in the Suppliers catalog\n\ndef clean_up(df):\n    df['PartUOM']= df['PartUOM'].str.replace(\"-\", \"\").str.replace(\",\",\"\").str.replace(\"/\",\"\").str.replace(\"_\",\"\").str.replace(\".\",\"\").str.replace(\"'\",\"\")\n\n\nclean_up(Spend)\nclean_up(Current)\nclean_up(Proposed)",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 26
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<FONT FACE ='Vollkorn'><Font Size= 4><b>A_II.</b>\n\n    <DD><blockquote>Merge the suppliers current and proposed catalogs together and extract only the necessary data needed."
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "# Merge the Proposed Catalog with the Current Catalog\n# Create a new dataframe with the specific columns necessary for the analysis\n\ncomparison = merge(Current, Proposed, left_on='PartUOM', right_on='PartUOM', how='inner', suffixes=('_x', '_y')) \n\ncomparison = comparison.loc[:,['PartUOM', 'Price_x' , 'Price_y']]\n",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 29
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font Size=4>A_III. \n<blockquote>Edit the Spend data\n<p>We are at the mercy of the people who enter the spend data. The analysis wants to only consider products that are actually offered in the catalog and clearly labeled. \n  \n    <p>\n    Possible hurdles in spend data:\n<p>\n    <OL>\n    <LI>Blank Part Numbers which won't result in a match to a product in the catalog and will yield a lower validity of the anaylsis\n<p>\n   <LI>Instead of completely blank Part Number, someone may input 'N/A' or 'See Quote'"
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#In order to properly analyze the data, we only want SKUs where they are not blank. Otherwise there is no way to tell if they should have been in a catalog\n#This line of code omits all SKUS that are blank\nSpend = Spend[Spend['Part Number'] >0]\nSpend = Spend[Spend['Part Number'].notnull()]\n\n#Want to get rid of SKUs where the person entered N/A. However, we don't use .str.contains because N/A COULD be a part of the SKU/Part #\nList = ['N.A.','N/A','NA','n/a','n.a.','na']\nSpend = Spend[-Spend['Part Number'].str.contains('Quote')]\nSpend = Spend[-Spend['Part Number'].str.contains('quote')]\nSpend = Spend[-Spend['Part Number'].str.contains('see attach')]\n\n\n#Using .isin will filter out those SKUs where it exactly equals N/A isntead of just contains it. \nSpend = Spend[-Spend['Part Number'].isin(List)]",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 30
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font Size =4>A_IV.\n    <blockquote> Merge the catalog dataframe with the 12-month historic spend for that supplier"
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#Merge the two catalog comparisons with the historic spend based on PartUOM\n#Merging on 'Left' means we want all values of the Spend and only the values of the comparison that match.\n\nanalysis = merge(Spend, comparison, left_on='PartUOM', right_on='PartUOM', how='left') \n\n#Extract only the columns that are relevant to the analysis\n\nanalysis = analysis.loc[:,[ 'Part Number','PartUOM', 'UNSPSC','Manufacturer', 'Quantity', 'Unit Price', 'Extended Price', 'Price_x' , 'Price_y','Item Type']]\n\n#rename Price_x to Current Price and Price_y to Proposed Price for easier analysis\n\nanalysis = analysis.rename(columns={'Price_x': 'Current Price', 'Price_y': 'Proposed Price'})\n",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 31
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font Size =4>A_V. \n    <blockquote>May or may not want to take out products that aren't in the catalog. First, run the analysis including 'NonCatalog Products', however, if the validity percent is low, then take out these products. This helps to understand if the supplier is providing more custom made products than standard hosted products. "
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "##If you only want items that are SQ Hosted Product\n##Hashtag this first\n#analysis= analysis[analysis['Item Type'] != 'NonCatalog Product']",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 34
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font Size =4>A_VI.\n    <blockquote>Determine if any products were removed and then convert strings to floats to perform computations "
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "##If there are any prices removed in the catalogs, the vendors will either put 'Price Removed' in the Proposed catalog under Current or Proposed Prices\n\n#For the rest of the analysis we don't want 'Price Removed' since this is a string and we can't do operations on the entire column\n# We do want to know how many items were removed\n##  We can compute that now, and then later change the 'Price Removed' to 0 so we can do calculations\n#Here we sum the number of times Price Removed shows up in either of two columns to get the number of deleted items\n\nanalysis['Proposed Price']=analysis['Proposed Price'].astype('str')\nanalysis['Current Price'] = analysis['Current Price'].astype('str')\nremoved = analysis['Proposed Price'].str.contains('Price Removed').sum()\nremoved2 = analysis['Current Price'].str.contains('Price Removed').sum()\n\n#I put two variables because the vendor could have the Price removed in Current or Proposed Price\nprint \"The number of deleted items is %s and %s\" %(removed,removed2)",
+     "language": "python",
+     "metadata": {},
+     "outputs": [
+      {
+       "output_type": "stream",
+       "stream": "stdout",
+       "text": "The number of deleted items is 24 and 24\n"
+      }
+     ],
+     "prompt_number": 35
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#Some Price files may include $ and , in the prices so this will result in the number not being a float\n#We use the if analysis...dtype to specify that if the Series is an Object, then we need to remove the $ and , and convert to float.\n#Before I didn't specify this and the code omitted all data if I put .str.replace('$') when there was actually no $; Now the new code makes it applicable to any data\n# Need to first omit the symbols \n#Then convert to float through .astype\n\nif analysis['Extended Price'].dtype is np.dtype('O'):\n analysis['Extended Price'] = analysis['Extended Price'].str.replace(\",\",\"\").str.replace(\"$\",\"\")\n analysis['Extended Price']= analysis['Extended Price'].astype('float32')\n\n#In the Current and/or Proposed Catalog, some prices may be labeled as Price Removed  \n#Get rid of the Price Removed because these are strings and we want the entire column to consist of floats\n#Replace the Price Removed with 0\n\nif analysis['Current Price'].dtype is np.dtype('O'):\n analysis['Current Price']= analysis['Current Price'].replace(to_replace= 'Price Removed' , value= 0, inplace=False)\n analysis['Current Price'] = analysis['Current Price'].str.replace(\",\",\"\").str.replace(\"$\",\"\")\n analysis['Current Price'] = analysis['Current Price'].astype('float32')\n\nif analysis['Proposed Price'].dtype is np.dtype('O'):\n analysis['Proposed Price']= analysis['Proposed Price'].replace(to_replace= 'Price Removed' , value= 0, inplace=False)\n analysis['Proposed Price'] = analysis['Proposed Price'].str.replace(\"$\", \"\").str.replace(\",\",\"\")\n analysis['Proposed Price'] = analysis['Proposed Price'].astype('float32')   \n\n",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 36
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font Size =4>B_I.  \n    <blockquote>Determine how historic spend impacts the Proposed pricing "
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#Append computed values at the end of the DataFrame that helps us in the final analysis \n#Compute Ext. Current Price, Proposed Ext. Price, $ Difference and % Difference\n\nanalysis['Current Ext. Price']=analysis['Quantity']*analysis['Current Price'].astype('float32')\nanalysis['Proposed Ext. Price'] = analysis['Quantity']*analysis['Proposed Price'].astype('float32')\n\n\nanalysis['$ Difference'] = analysis['Proposed Ext. Price']-analysis['Current Ext. Price']\nanalysis['% Difference'] = analysis['$ Difference']/analysis['Current Ext. Price']\n\n\n",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 37
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font Size =4>B_II. \n    <blockquote>Create a 'Validity' column that determines if there is a product in the spend but not either catalog"
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "# Let's add a validity column\n# Validity answers the question, how much the comparable spend purchased is reflected in the current and proposed catalogs\n# Recall, we already took out part numbers that were null or mislabeled by the user. \n# We don't want this data since it won't accurately reflect an actual product.\n# A SKU that is blank or mislabeled shouldn't be included in the analysis\n\nanalysis['Valid'] = analysis['Current Price'].notnull() * analysis['Proposed Price'].notnull()",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 38
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font Size =4>B_III. \n    <blockquote>Calculate Valid Spend and Valid Current and Proposed Extended Prices"
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "## Now we can multiply the Extended prices by the Validity column to get the valid spend, valid current and proposed ext. prices\n\nanalysis['Valid Spend'] = analysis['Extended Price'] * analysis['Valid']\nanalysis['Valid Current Ext. Price'] = analysis['Current Ext. Price'] * analysis['Valid']\nanalysis['Valid Proposed Ext. Price'] = analysis['Proposed Ext. Price'] * analysis['Valid']",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 39
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font Size =4\n                            >B_IV.\n    <blockquote>\n        Calculate the variables necessary for understanding the impact on the campus"
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#This locale allows us to convert floats into currency\nimport locale\nlocale.setlocale( locale.LC_ALL, '' )\n\n\n##Sum up the column values to get a total price \nSpend = analysis['Extended Price'].sum()\nValid_Spend = analysis['Valid Spend'].sum()\n\n\n\n# We can get the Validity percentage\nValidity_percentage = Valid_Spend / Spend\nvalid_percentage = '{percent:.2%}'.format(percent= Validity_percentage)\n\n#Sum up Current and Proposed Extended Prices\nValid_CurrExt_Price = analysis['Valid Current Ext. Price'].sum()\nValid_ProposedExt_Price = analysis['Valid Proposed Ext. Price'].sum()\n\nTotal_Catalog_Price_Difference = Valid_ProposedExt_Price - Valid_CurrExt_Price\nPercent_Increase = Total_Catalog_Price_Difference/Valid_CurrExt_Price\n\n\n#Understand the count of different SKU's purchased\nCount_SKUS = len(analysis['Part Number'].unique())\n\n#Get an understanding for the total number of products purchased\nSum_of_SKUS= analysis['Quantity'].sum()\n\n\n\n#set these variables equal to currency so the end result is easier to read\n\nspenddollars = locale.currency(Spend)\nvalid_spend_dollars = locale.currency(Valid_Spend)\ncurrent_price_dollars = locale.currency (Valid_CurrExt_Price)\nproposed_price_dollars = locale.currency(Valid_ProposedExt_Price)\nprice_difference_dollars = locale.currency(Total_Catalog_Price_Difference)\n\n#Now we want the percentage to actually look like a percentage\n#Ex. .0007 will simply yield 0 if we don't format it properly\n\npercentage = '{percent:.2%}'.format(percent=Percent_Increase)\n\n\n#Notice how the variables used are %s not %d. The locale.currency function changes the float into a string.\n\nprint \"The Total spend is %s and the valid spend is %s\" %(spenddollars,valid_spend_dollars)\nprint \"Validity percentage is %s \\n\" %valid_percentage\nprint \"The Total Quantity of SKUS analyzed is %d\" %Sum_of_SKUS\nprint \"The number of SKUS analyzed is %d\\n\" %Count_SKUS\nprint \"The Total Valid Current Extended price is %s\" %current_price_dollars\nprint \"The Total Valid Proposed Extended price is %s\\n\\n\" %proposed_price_dollars\nprint \"The dollar difference between Total Proposed and Total Current is %s\" %price_difference_dollars\nprint \"The percent increase is %s\" %percentage\n\n",
+     "language": "python",
+     "metadata": {},
+     "outputs": [
+      {
+       "output_type": "stream",
+       "stream": "stdout",
+       "text": "The Total spend is $187503.43 and the valid spend is $184654.20\nValidity percentage is 98.48% \n\nThe Total Quantity of SKUS analyzed is 5023\nThe number of SKUS analyzed is 331\n\nThe Total Valid Current Extended price is $186741.49\nThe Total Valid Proposed Extended price is $186741.49\n\n\nThe dollar difference between Total Proposed and Total Current is $0.00\nThe percent increase is 0.00%\n"
+      }
+     ],
+     "prompt_number": 40
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font Size =4>B_V.\n    <blockquote>\n        Calculate the impact in dollars of the removed products from the proposed catalog \n        <p>\n            <p>\n        The reason for this calculation is to understand if a supplier is discontinuing a product that the university had purchased regularly. Small removed spend is acceptable, but a large amount of spend removed requires questioning and further investigation."
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#Let's now get the spend for any products that were removed\n#We can create a separate dataframe where the ProposedPrice is 0 AND there exists a Current Price\n\n#First we need to fill the Proposed Prices to 0 if it is empty\nanalysis['Proposed Price'] = analysis['Proposed Price'].fillna(0)\n\n#After filling in the empty spaces with 0 we create a dataframe where the Proposed Price is ONLY zero\nproposed_0=  analysis[analysis['Proposed Price'] == 0]\n\n#We don't want both Current and Proposed to be zero\n#If there exists a current price and not a proposed then it shows that a price was removed\n#Create a dataframe where Proposed Price is 0 and Current price is some number \n\ncurrentnot_zero = proposed_0[proposed_0['Current Price'] >0]\n\n#This variable will show the aggregated historic spend on the products that were removed\nRemoved_Spend = currentnot_zero['Extended Price'].sum()\n\n#Let's put this value in currency notation\nRemoved_Spend_Dollars = locale.currency(Removed_Spend)\n\nprint \"The Removed Spend is %s\" %Removed_Spend_Dollars",
+     "language": "python",
+     "metadata": {},
+     "outputs": [
+      {
+       "output_type": "stream",
+       "stream": "stdout",
+       "text": "The Removed Spend is $0.00\n"
+      }
+     ],
+     "prompt_number": 41
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "analysis[:4]",
+     "language": "python",
+     "metadata": {},
+     "outputs": [
+      {
+       "html": "<div style=\"max-height:1000px;max-width:1500px;overflow:auto;\">\n<table border=\"1\" class=\"dataframe\">\n  <thead>\n    <tr style=\"text-align: right;\">\n      <th></th>\n      <th>Part Number</th>\n      <th>PartUOM</th>\n      <th>UNSPSC</th>\n      <th>Manufacturer</th>\n      <th>Quantity</th>\n      <th>Unit Price</th>\n      <th>Extended Price</th>\n      <th>Current Price</th>\n      <th>Proposed Price</th>\n      <th>Item Type</th>\n      <th>Current Ext. Price</th>\n      <th>Proposed Ext. Price</th>\n      <th>$ Difference</th>\n      <th>% Difference</th>\n      <th>Valid</th>\n      <th>Valid Spend</th>\n      <th>Valid Current Ext. Price</th>\n      <th>Valid Proposed Ext. Price</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n      <th>0</th>\n      <td> 28199-307 (CS)</td>\n      <td> 28199307 (CS)CS</td>\n      <td> 41104925</td>\n      <td> THERMO SCIENTIFIC OHL - DALLAS</td>\n      <td> 4</td>\n      <td> 51.12</td>\n      <td> 204.48</td>\n      <td> 51.119999</td>\n      <td> 51.119999</td>\n      <td> SQ Hosted Product</td>\n      <td> 204.479996</td>\n      <td> 204.479996</td>\n      <td> 0</td>\n      <td> 0</td>\n      <td> True</td>\n      <td> 204.48</td>\n      <td> 204.479996</td>\n      <td> 204.479996</td>\n    </tr>\n    <tr>\n      <th>1</th>\n      <td> 28199-307 (CS)</td>\n      <td> 28199307 (CS)CS</td>\n      <td> 41104925</td>\n      <td> THERMO SCIENTIFIC OHL - DALLAS</td>\n      <td> 4</td>\n      <td> 51.12</td>\n      <td> 204.48</td>\n      <td> 51.119999</td>\n      <td> 51.119999</td>\n      <td> SQ Hosted Product</td>\n      <td> 204.479996</td>\n      <td> 204.479996</td>\n      <td> 0</td>\n      <td> 0</td>\n      <td> True</td>\n      <td> 204.48</td>\n      <td> 204.479996</td>\n      <td> 204.479996</td>\n    </tr>\n    <tr>\n      <th>2</th>\n      <td> 28199-307 (CS)</td>\n      <td> 28199307 (CS)CS</td>\n      <td> 41104925</td>\n      <td> THERMO SCIENTIFIC OHL - DALLAS</td>\n      <td> 4</td>\n      <td> 51.12</td>\n      <td> 204.48</td>\n      <td> 51.119999</td>\n      <td> 51.119999</td>\n      <td> SQ Hosted Product</td>\n      <td> 204.479996</td>\n      <td> 204.479996</td>\n      <td> 0</td>\n      <td> 0</td>\n      <td> True</td>\n      <td> 204.48</td>\n      <td> 204.479996</td>\n      <td> 204.479996</td>\n    </tr>\n    <tr>\n      <th>3</th>\n      <td> 28199-307 (CS)</td>\n      <td> 28199307 (CS)CS</td>\n      <td> 41104925</td>\n      <td> THERMO SCIENTIFIC OHL - DALLAS</td>\n      <td> 4</td>\n      <td> 51.12</td>\n      <td> 204.48</td>\n      <td> 51.119999</td>\n      <td> 51.119999</td>\n      <td> SQ Hosted Product</td>\n      <td> 204.479996</td>\n      <td> 204.479996</td>\n      <td> 0</td>\n      <td> 0</td>\n      <td> True</td>\n      <td> 204.48</td>\n      <td> 204.479996</td>\n      <td> 204.479996</td>\n    </tr>\n  </tbody>\n</table>\n</div>",
+       "metadata": {},
+       "output_type": "pyout",
+       "prompt_number": 43,
+       "text": "      Part Number          PartUOM    UNSPSC                    Manufacturer  \\\n0  28199-307 (CS)  28199307 (CS)CS  41104925  THERMO SCIENTIFIC OHL - DALLAS   \n1  28199-307 (CS)  28199307 (CS)CS  41104925  THERMO SCIENTIFIC OHL - DALLAS   \n2  28199-307 (CS)  28199307 (CS)CS  41104925  THERMO SCIENTIFIC OHL - DALLAS   \n3  28199-307 (CS)  28199307 (CS)CS  41104925  THERMO SCIENTIFIC OHL - DALLAS   \n\n   Quantity  Unit Price  Extended Price  Current Price  Proposed Price  \\\n0         4       51.12          204.48      51.119999       51.119999   \n1         4       51.12          204.48      51.119999       51.119999   \n2         4       51.12          204.48      51.119999       51.119999   \n3         4       51.12          204.48      51.119999       51.119999   \n\n           Item Type  Current Ext. Price  Proposed Ext. Price  $ Difference  \\\n0  SQ Hosted Product          204.479996           204.479996             0   \n1  SQ Hosted Product          204.479996           204.479996             0   \n2  SQ Hosted Product          204.479996           204.479996             0   \n3  SQ Hosted Product          204.479996           204.479996             0   \n\n   % Difference Valid  Valid Spend  Valid Current Ext. Price  \\\n0             0  True       204.48                204.479996   \n1             0  True       204.48                204.479996   \n2             0  True       204.48                204.479996   \n3             0  True       204.48                204.479996   \n\n   Valid Proposed Ext. Price  \n0                 204.479996  \n1                 204.479996  \n2                 204.479996  \n3                 204.479996  "
+      }
+     ],
+     "prompt_number": 43
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font Size =4>B_VI. \n    <blockquote>Gain visibility into the top 5 UNSPSC's by spend and the impact of the catalog on these product types"
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#Create a pivot table to look at top UNSPSC's and specific numbers associated with those product categories\n\nfrom pandas import pivot_table\nimport numpy as np\n  \nUNSPSC = pivot_table( analysis, values = ['Extended Price', 'Quantity', '$ Difference','Valid Current Ext. Price','Valid Proposed Ext. Price'], rows = ['UNSPSC'], aggfunc = np.sum)\n\nUNSPSC['Percent Increase'] = UNSPSC['$ Difference'] / UNSPSC['Valid Current Ext. Price']\nUNSPSC['Percent Increase']= UNSPSC['Percent Increase']*100",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 21
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#Want to show the pivot table with the top UNSPSC's by spend\n#Use .head() because some pivot tables will be too large to show all of the columns and we only care about the top 5 anyway\nUNSPSC=UNSPSC.rename(columns={'Extended Price':'Spend'})\nUNSPSC.sort(\"Spend\", ascending=False).head()",
+     "language": "python",
+     "metadata": {},
+     "outputs": [
+      {
+       "html": "<div style=\"max-height:1000px;max-width:1500px;overflow:auto;\">\n<table border=\"1\" class=\"dataframe\">\n  <thead>\n    <tr style=\"text-align: right;\">\n      <th></th>\n      <th>$ Difference</th>\n      <th>Spend</th>\n      <th>Quantity</th>\n      <th>Valid Current Ext. Price</th>\n      <th>Valid Proposed Ext. Price</th>\n      <th>Percent Increase</th>\n    </tr>\n    <tr>\n      <th>UNSPSC</th>\n      <th></th>\n      <th></th>\n      <th></th>\n      <th></th>\n      <th></th>\n      <th></th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n      <th>41121600</th>\n      <td>  0</td>\n      <td> 21250.210938</td>\n      <td>  707</td>\n      <td>   53.060001</td>\n      <td>   53.060001</td>\n      <td>  0</td>\n    </tr>\n    <tr>\n      <th>46181504</th>\n      <td>  0</td>\n      <td>  8586.429688</td>\n      <td> 1213</td>\n      <td>  399.955494</td>\n      <td>  399.955494</td>\n      <td>  0</td>\n    </tr>\n    <tr>\n      <th>41122102</th>\n      <td>  0</td>\n      <td>  7931.110352</td>\n      <td>   54</td>\n      <td> 1324.880035</td>\n      <td> 1324.880035</td>\n      <td>  0</td>\n    </tr>\n    <tr>\n      <th>41121511</th>\n      <td>NaN</td>\n      <td>  7188.669434</td>\n      <td>  163</td>\n      <td>         NaN</td>\n      <td>         NaN</td>\n      <td>NaN</td>\n    </tr>\n    <tr>\n      <th>41122107</th>\n      <td>NaN</td>\n      <td>  5433.910156</td>\n      <td>   55</td>\n      <td>         NaN</td>\n      <td>         NaN</td>\n      <td>NaN</td>\n    </tr>\n  </tbody>\n</table>\n</div>",
+       "metadata": {},
+       "output_type": "pyout",
+       "prompt_number": 47,
+       "text": "          $ Difference         Spend  Quantity  Valid Current Ext. Price  \\\nUNSPSC                                                                     \n41121600             0  21250.210938       707                 53.060001   \n46181504             0   8586.429688      1213                399.955494   \n41122102             0   7931.110352        54               1324.880035   \n41121511           NaN   7188.669434       163                       NaN   \n41122107           NaN   5433.910156        55                       NaN   \n\n          Valid Proposed Ext. Price  Percent Increase  \nUNSPSC                                                 \n41121600                  53.060001                 0  \n46181504                 399.955494                 0  \n41122102                1324.880035                 0  \n41121511                        NaN               NaN  \n41122107                        NaN               NaN  "
+      }
+     ],
+     "prompt_number": 47
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font Size=4>B_VII. \n    <blockquote>\n        Gain visibility into the top 5 Manufacturers by spend and the impact of the proposed catalog"
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "#Create a pivot table to look at the summary of the proposed catalog impact by Manufacturer\n\nManufacturer = pivot_table( analysis, values = ['Extended Price', 'Quantity', '$ Difference','Valid Current Ext. Price','Valid Proposed Ext. Price'], rows = 'Manufacturer', aggfunc = np.sum)\n\n\nManufacturer['Percent Increase'] = Manufacturer['$ Difference'] / Manufacturer['Valid Current Ext. Price']\nManufacturer['Percent Increase']= Manufacturer['Percent Increase']*100\nManufacturer= Manufacturer[Manufacturer['$ Difference'].notnull()]\n\nManufacturer=Manufacturer.rename(columns={'Extended Price':'Spend'})\nManufacturer.sort(\"Spend\", ascending=False)[:6]",
+     "language": "python",
+     "metadata": {},
+     "outputs": [
+      {
+       "html": "<div style=\"max-height:1000px;max-width:1500px;overflow:auto;\">\n<table border=\"1\" class=\"dataframe\">\n  <thead>\n    <tr style=\"text-align: right;\">\n      <th></th>\n      <th>$ Difference</th>\n      <th>Spend</th>\n      <th>Quantity</th>\n      <th>Valid Current Ext. Price</th>\n      <th>Valid Proposed Ext. Price</th>\n      <th>Percent Increase</th>\n    </tr>\n    <tr>\n      <th>Manufacturer</th>\n      <th></th>\n      <th></th>\n      <th></th>\n      <th></th>\n      <th></th>\n      <th></th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n      <th>GREINER BIO-ONE</th>\n      <td> 0</td>\n      <td> 20204.464844</td>\n      <td> 290</td>\n      <td> 1324.880035</td>\n      <td> 1324.880035</td>\n      <td> 0</td>\n    </tr>\n    <tr>\n      <th>QUALITY SCIENTIFIC PLASTICS</th>\n      <td> 0</td>\n      <td>   540.339966</td>\n      <td>  17</td>\n      <td>   17.000000</td>\n      <td>   17.000000</td>\n      <td> 0</td>\n    </tr>\n    <tr>\n      <th>MICROFLEX</th>\n      <td> 0</td>\n      <td>   381.070007</td>\n      <td>  31</td>\n      <td>  399.955494</td>\n      <td>  399.955494</td>\n      <td> 0</td>\n    </tr>\n    <tr>\n      <th>CORNING</th>\n      <td> 0</td>\n      <td>    58.990002</td>\n      <td>   1</td>\n      <td>   58.990002</td>\n      <td>   58.990002</td>\n      <td> 0</td>\n    </tr>\n    <tr>\n      <th>QSP</th>\n      <td> 0</td>\n      <td>    38.220001</td>\n      <td>   2</td>\n      <td>   36.060001</td>\n      <td>   36.060001</td>\n      <td> 0</td>\n    </tr>\n  </tbody>\n</table>\n</div>",
+       "metadata": {},
+       "output_type": "pyout",
+       "prompt_number": 48,
+       "text": "                             $ Difference         Spend  Quantity  \\\nManufacturer                                                        \nGREINER BIO-ONE                         0  20204.464844       290   \nQUALITY SCIENTIFIC PLASTICS             0    540.339966        17   \nMICROFLEX                               0    381.070007        31   \nCORNING                                 0     58.990002         1   \nQSP                                     0     38.220001         2   \n\n                             Valid Current Ext. Price  \\\nManufacturer                                            \nGREINER BIO-ONE                           1324.880035   \nQUALITY SCIENTIFIC PLASTICS                 17.000000   \nMICROFLEX                                  399.955494   \nCORNING                                     58.990002   \nQSP                                         36.060001   \n\n                             Valid Proposed Ext. Price  Percent Increase  \nManufacturer                                                              \nGREINER BIO-ONE                            1324.880035                 0  \nQUALITY SCIENTIFIC PLASTICS                  17.000000                 0  \nMICROFLEX                                   399.955494                 0  \nCORNING                                      58.990002                 0  \nQSP                                          36.060001                 0  "
+      }
+     ],
+     "prompt_number": 48
+    },
+    {
+     "cell_type": "heading",
+     "level": 4,
+     "metadata": {},
+     "source": "<Font Face='Vollkorn'><Font SIZE=4>B_VIII. \n    <blockquote>Log the results in a running file for easy recall of historic catalog changes by supplier and campus"
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "import datetime as dt\ndate = dt.date.today().strftime(\"%m/%d/%Y\")\n",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 49
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "Summary= df([dict(Supplier=Supplier,Spend=spenddollars,Validity_Percent=valid_percentage,Price_Difference=price_difference_dollars,Percentage_of_Increase=percentage,Quantity_Removed=removed,Quantity_Removed2=removed2,Removed_Spend = Removed_Spend_Dollars, Campus = Campus, Date = date),])\n",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 50
+    },
+    {
+     "cell_type": "code",
+     "collapsed": false,
+     "input": "Log = pd.read_csv('C:/Users/alexisperez/Documents/Log of Price Files/Price File Log.csv')\nLog = Log.append(Summary)\nLog.to_csv('C:/Users/alexisperez/Documents/Log of Price Files/Price File Log.csv', index = False)",
+     "language": "python",
+     "metadata": {},
+     "outputs": [],
+     "prompt_number": 52
+    }
+   ],
+   "metadata": {}
+  }
+ ]
+}
